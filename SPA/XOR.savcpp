@@ -1,0 +1,166 @@
+#include <opencv2/opencv.hpp>
+#include <iostream>
+#include <vector>
+#include "SPALib.h"
+using namespace std;
+
+
+struct Linear
+{
+    int outSize, inpSize;
+    Num **weights;
+    Num *bias;
+    Num(*activateFunc)(Num) = MathFunction::Sigmoid;
+    Linear(int inpSize, int outSize):outSize(outSize),inpSize(inpSize)
+    {
+        weights = new Num*[outSize];
+        bias = new Num[outSize];
+
+        for (int i = 0; i < outSize; i++)
+        {
+            weights[i] = new Num[inpSize];
+            for (int j = 0; j < inpSize; j++)
+            {
+                weights[i][j] = AddtionalFunctions::RanRange(-1, 1);
+            }
+            bias[i] = AddtionalFunctions::RanRange(-1,1);
+        }
+    }
+
+    ~Linear()
+    {
+        delete[] bias;
+
+        for (int i = 0; i < outSize; i++)
+        {
+            delete[] weights[i];
+        }
+        delete[] weights;
+    }
+
+    void forward(Num *inp, Num *out)
+    {
+        for (int i = 0; i < outSize; i++)
+        {
+            out[i] = 0;
+            for (int j = 0; j < inpSize; j++)
+            {
+                out[i] = out[i] + weights[i][j] * inp[j];
+            }
+            out[i] = out[i] + bias[i];
+            out[i] = activateFunc(out[i]);
+        }
+    }
+
+    void fit(double lr)
+    {
+        for (int i = 0; i < outSize; i++)
+        {
+            for (int j = 0; j < inpSize; j++)
+            {
+                weights[i][j].apply(lr);
+            }
+            bias[i].apply(lr);
+        }
+    }
+
+};
+
+
+Num inp[4][2] = {
+    {0,0},
+    {0,1},
+    {1,0},
+    {1,1}
+};
+
+Num out[4][1] = {
+    {1},
+    {0},
+    {0},
+    {1}
+};
+
+Linear l1(2,100);
+Linear l2(100,100);
+Linear l3(100,1);
+
+void Test()
+{
+    for (int i = 0; i < 4; i++)
+    {
+        Num feed[100] = { 0,0,0 };
+        Num pred[100] = { 0,0,0 };
+        for (int t = 0; t < 100; t++)
+        {
+            feed[t] = 0;
+            pred[t] = 0;
+        }
+        for (int j = 0; j < 2; j++)
+        {
+            feed[j] = inp[i][j];
+        }
+        l1.forward(feed, pred);
+        swap(feed, pred);
+        l2.forward(feed, pred);
+        swap(feed, pred);
+        l3.forward(feed, pred);
+
+        cout << pred[0] << "\n";
+    }
+}
+
+void Train(int epoch, double lr)
+{
+    Num loss[4];
+    double totalLoss = 0;
+    for (int i = 0; i < 4; i++)
+    {
+        Num feed[100] = { 0,0,0 };
+        Num pred[100] = { 0,0,0 };
+        for (int t = 0; t < 100; t++)
+        {
+            feed[t] = 0;
+            pred[t] = 0;
+        }
+        for (int j = 0; j < 2; j++)
+        {
+            feed[j] = inp[i][j];
+        }
+        l1.forward(feed, pred);
+        swap(feed, pred);
+        l2.forward(feed, pred);
+        swap(feed, pred);
+        l3.forward(feed, pred);
+
+        loss[i] = MathFunction::Square(out[i][0] - pred[0]);
+        if (i == 0)
+        {
+            AutoGradientSystem::ClearGrad(loss[i].curNode);
+        }
+
+        AutoGradientSystem::CalcGrad(loss[i].curNode);
+        totalLoss += loss[i].val;
+    
+    }
+
+    l1.fit(lr);
+    l2.fit(lr);
+    l3.fit(lr);
+    if (epoch % 100 == 0)
+    {
+        cout <<"Epoch " << epoch << ": " << totalLoss << "\n";
+    }
+}
+
+
+int main() {
+    Test();
+    for (int ep = 0; ep < 1000; ep++)
+    {
+        Train(ep, 0.01);
+        AutoGradientSystem::ClearEverything();
+    }
+    Test();
+    return 0;
+}
